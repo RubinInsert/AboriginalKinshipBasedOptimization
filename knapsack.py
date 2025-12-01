@@ -1,78 +1,132 @@
-import numpy as np
+import os
+import csv
+
 
 class Knapsack:
-    def __init__(self):
+    def __init__(self, file_path, optima_file_path=None):
+        """
+        file_path: Path to the .in or .txt instance file
+        optima_file_path: Path to the optima.csv file (optional, for validation)
+        """
+        dir_path = os.path.dirname(file_path)
         self.maxCapacity = 0
+        self.items = []  # List of (weight, value)
+        self.optimal_value = None
+        self.problem_name = os.path.basename(dir_path)
 
-        self.items = [] # List of items available to the knapsack
+        self._load_from_file(file_path)
 
-        self.__initData()
+        if optima_file_path:
+            self._load_optimal_value(optima_file_path)
 
-    def __len__(self): # Return the total number of items in the knapsack
+    def __len__(self):
         return len(self.items)
 
-    def __initData(self):
-        self.items = [ # Name, Value, Weight
-            ("Gold Coin", 60, 10),
-            ("Silver Coin", 40, 8),
-            ("Bronze Coin", 25, 7),
-            ("Emerald Gem", 90, 13),
-            ("Ruby Gem", 95, 14),
-            ("Sapphire Gem", 85, 11),
-            ("Diamond Shard", 110, 15),
-            ("Magic Scroll", 70, 5),
-            ("Leather Boots", 30, 12),
-            ("Iron Sword", 50, 20),
-            ("Steel Shield", 65, 25),
-            ("Health Potion", 40, 3),
-            ("Mana Potion", 45, 3),
-            ("Elixir", 90, 4),
-            ("Magic Ring", 100, 2),
-            ("Magic Amulet", 120, 3),
-            ("Torch", 20, 6),
-            ("Rope", 15, 9),
-            ("Grappling Hook", 55, 10),
-            ("Lantern", 35, 8),
-            ("Compass", 50, 4),
-            ("Map", 30, 2),
-            ("Crossbow", 80, 18),
-            ("Bolts Pack", 22, 5),
-            ("Herbs Bundle", 28, 4),
-            ("Crystal Orb", 130, 12),
-            ("Enchanted Cloak", 140, 9),
-            ("Book of Spells", 95, 10),
-            ("Traveler's Hat", 18, 3),
-            ("Blacksmith Tools", 60, 22),
-            ("Carpenter Tools", 55, 20),
-            ("Herbal Kit", 48, 6),
-            ("Fire Bomb", 75, 5),
-            ("Ice Bomb", 78, 5),
-            ("Smoke Bomb", 32, 3),
-            ("Lockpick Set", 42, 2),
-            ("Spyglass", 58, 7),
-            ("Telescope", 80, 12),
-            ("Gemstone Box", 150, 16),
-            ("Ancient Relic", 200, 18)
-        ]
-        self.maxCapacity = 400
-    def getTotalValue(self, binaryChoiceList): # Calculate the value of a set of choices. If the choice is overweight, the set's value is penalised significantly
-        totalWeight = totalValue = 0
-        for i in range(len(binaryChoiceList)):
-            item, weight, value = self.items[i]
-            totalWeight += binaryChoiceList[i] * weight # if choice isnt chosen, multiply by zero essentially skipping item
-            totalValue += binaryChoiceList[i] * value
+    def _load_from_file(self, file_path):
+        """Parse the Jooken/Pisinger style knapsack file."""
+        with open(file_path, "r") as f:
+            lines = [line.strip() for line in f if line.strip()]
+
+        # Line 1: Number of items
+        num_items = int(lines[0])
+
+        # Lines 2 to N+1: Item details (ID, Profit, Weight)
+        # We skip the ID (parts[0]) as requested
+        self.items = []
+        for i in range(1, num_items + 1):
+            parts = lines[i].split()
+            # Standard format: [ID, Profit, Weight]
+            # Some variations might be [Profit, Weight], so we check length
+            if len(parts) >= 3:
+                value = float(parts[1])
+                weight = float(parts[2])
+            else:
+                # Fallback for simpler formats
+                value = float(parts[0])
+                weight = float(parts[1])
+
+            self.items.append((weight, value))
+
+        # Last Line: Capacity
+        self.maxCapacity = float(lines[-1])
+
+    def _load_optimal_value(self, optima_csv_path):
+        """Looks up the optimal value from a separate CSV file."""
+        try:
+            with open(optima_csv_path, 'r') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    # Row format: instance_name, optimal_value
+                    print (self.problem_name)
+                    if self.problem_name in row[0]:
+                        self.optimal_value = float(row[1])
+                        break
+        except Exception as e:
+            print(f"Warning: Could not load optimal value. {e}")
+
+        print(
+            f"Loaded {self.problem_name}: {len(self.items)} items, capacity = {self.maxCapacity}, known optimal = {self.optimal_value}")
+
+    def getTotalValue(self, binaryChoiceList):
+        """
+        Calculates fitness.
+        Returns actual value if valid.
+        Returns penalized value if weight > capacity.
+        """
+        totalWeight = 0
+        totalValue = 0
+
+        # Determine strict or soft penalty
+        # For Genetic Algorithms, a soft penalty is often better to allow
+        # the population to traverse the boundary of feasibility.
+
+        for i, choice in enumerate(binaryChoiceList):
+            if choice:  # Assuming binary 1/0 or True/False
+                weight, value = self.items[i]
+                totalWeight += weight
+                totalValue += value
+
         if totalWeight <= self.maxCapacity:
             return totalValue
         else:
-            penalty = (totalWeight - self.maxCapacity) * 10
-        return totalValue - penalty
+            # Standard Linear Penalty
+            penalty = (totalWeight - self.maxCapacity) * 1000
+            return totalValue - penalty
+
     def printItems(self, binaryChoiceList):
-        totalWeight = totalValue = 0
-        for i in range(len(binaryChoiceList)):
-            item, weight, value = self.items[i]
-            if binaryChoiceList[i] > 0:
+        totalWeight = 0
+        totalValue = 0
+        print(f"--- Solution Details for {self.problem_name} ---")
+        for i, choice in enumerate(binaryChoiceList):
+            if choice > 0:
+                weight, value = self.items[i]
                 totalWeight += weight
                 totalValue += value
-                print("- Adding {}: weight = {}, value = {}, accumulated weight = {}, accumulated value = {}".format(item, weight, value, totalWeight, totalValue))
-        print("- Total weight = {}, Total value = {}".format(totalWeight, totalValue))
+                print(f"- Item {i}: Weight={weight}, Value={value}")
 
+        print(f"--- Summary ---")
+        print(f"Total Weight: {totalWeight} / {self.maxCapacity}")
+        print(f"Total Value:  {totalValue}")
+        if self.optimal_value:
+            print(f"Optimality Gap: {self.optimal_value - totalValue}")
+
+
+if __name__ == "__main__":
+    # Example Usage
+    # Ensure you have downloaded the dataset mentioned above
+
+    # Path to a specific problem file
+    p_file = "Knapsack_Problems/problemInstances/n_600_c_1000000_g_10_f_0.1_eps_0.0001_s_100/test.in"
+
+    # Path to the solution key
+    opt_file = "Knapsack_Problems/optima.csv"
+
+    try:
+        knapsack = Knapsack(p_file, opt_file)
+
+        # Test with a dummy solution (all items selected)
+        dummy_sol = [1] * len(knapsack)
+        print(f"Fitness of taking all items: {knapsack.getTotalValue(dummy_sol)}")
+
+    except FileNotFoundError:
+        print("Please set the correct file paths to run the test.")
