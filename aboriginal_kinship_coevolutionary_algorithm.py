@@ -39,7 +39,7 @@ knapsack = Knapsack(p_file, opt_file)
 
 # Defining Problem Constraints
 ITEMS_LENGTH = len(knapsack)
-POPULATION_SIZE = 1000
+POPULATION_SIZE = 2000
 P_CROSSOVER = 0.9
 P_MUTATION = 0.005
 MAX_GENERATIONS = 500
@@ -168,11 +168,13 @@ for gen in range(MAX_GENERATIONS):
             # c2.fitness.values = ()
 
             # Add new offspring to list of new children
-            if c1.fitness.values[0] > c2.fitness.values[0]:
-                offspring_dict[child_assigned_population].extend([c1])
-            else:
-                offspring_dict[child_assigned_population].extend([c2])
-    ELITE_SIZE = 5
+            # if c1.fitness.values[0] > c2.fitness.values[0]:
+            #     offspring_dict[child_assigned_population].extend([c1])
+            # else:
+            #     offspring_dict[child_assigned_population].extend([c2])
+            offspring_dict[child_assigned_population].extend([c1]) # Add both children and crop infavourable later
+            offspring_dict[child_assigned_population].extend([c2])
+    ELITE_SIZE = 1
     # Before Elitism, track statistics
     all_children = [child for plist in offspring_dict.values() for child in plist]
 
@@ -192,8 +194,9 @@ for gen in range(MAX_GENERATIONS):
     # ELITISM (SAVE 5 best parents from each generation)
     for target_population, child_list in offspring_dict.items():
         sorted_old = sorted(populations[target_population], key=lambda ind: ind.fitness.values[0], reverse=True)
+        sorted_child = sorted(child_list, key=lambda ind: ind.fitness.values[0], reverse=True)
         elite = sorted_old[:ELITE_SIZE]
-        populations[target_population][:] = elite + child_list[:len(populations[target_population]) - ELITE_SIZE]
+        populations[target_population][:] = elite + sorted_child[:len(populations[target_population]) - ELITE_SIZE]
 
     # Print best of children
     print(f"Gen {gen}: ", end="")
