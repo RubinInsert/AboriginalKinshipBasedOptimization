@@ -92,7 +92,6 @@ class Knapsack:
             # Standard Linear Penalty
             penalty = (totalWeight - self.maxCapacity) * 1000
             return totalValue - penalty
-
     def printItems(self, binaryChoiceList):
         totalWeight = 0
         totalValue = 0

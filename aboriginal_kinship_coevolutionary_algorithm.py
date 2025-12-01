@@ -1,7 +1,22 @@
 # KNAPSACK PROBLEMS: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/mknapinfo.html
-# Features to keep in mind:
-# 1000 Total Population
-
+# KEY FEATURES:
+# 8 Groups
+# Uses cxUniform Crossover
+# Uses mutFlipBit Mutation
+# Individuals are initialized through the 'init_hybrid_population' function which uses a greedy algorithm on a sorted v/w ratio list.
+# - Without this individuals are too far from any probable options for the GA to make any progress.
+# Elitism is used from the previous generation (the parents).
+# Children are exposed to a repair_operator prior to evaluation.
+# - This works "backwards" placing all items in a v/w ratio list and removing the lowest items until the individual is viable.
+# TODO:
+# Implement HOF. Different to Eliteism (Global effect)
+# Change from limiting generations, to limiting algorithm run-time. (Continue tracking generations for additional statistics however)
+# - What should be considered the start of the algorithm? I.e. is the initialization of population included?
+# Possibly update the generic evolutionary algorithm to include the above key features for an additional benchmark
+# Generic Co-evolutionary algorithm
+# Questions:
+# - What Co-evolutionary algorithm would be best to benchmark against? E.g. competitive or cooperative? I presume competitive?
+# - How should the generic co-evolutionary algorithm function? should the children just be placed in random groups? are parents chosen from their same group?
 import random
 from math import floor
 
@@ -10,7 +25,7 @@ import matplotlib.pyplot as plt
 from knapsack import Knapsack
 import numpy as np
 from kinship_structure_navigation import Warlpiri_Subsection
-from hybrid_initializations import create_feasible_individual
+from GA_helpers import init_hybrid_population, repair_individual
 Population_Index_Dict = {
     0: "P1A",
     1: "P1B",
@@ -44,6 +59,7 @@ P_CROSSOVER = 0.9
 P_MUTATION = 0.005
 MAX_GENERATIONS = 500
 HALL_OF_FAME_SIZE = 10
+ELITE_SIZE = 1 # 1 Elite per group. Total 8 Elites.
 # Random Seed
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
@@ -62,23 +78,6 @@ toolbox.register("individualCreator", tools.initRepeat, creator.Individual, tool
 # Register the popuilationCreator operator
 toolbox.register('populationCreator', tools.initRepeat, list, toolbox.individualCreator)
 # Define 8 Populations with their index correlating to the Population_Index_Dict
-def init_hybrid_population(toolbox, pop_size, knapsack_instance, feasible_ratio=0.5):
-    """Initializes a population with a mix of random and heuristically feasible individuals."""
-
-    n_feasible = int(pop_size * feasible_ratio)
-    population = []
-
-    # Generate Feasible Individuals
-    for _ in range(n_feasible):
-        ind_list = create_feasible_individual(knapsack_instance)
-        population.append(creator.Individual(ind_list))
-
-    # Generate Random Individuals
-    random_pop = toolbox.populationCreator(n=pop_size - n_feasible)
-    population.extend(random_pop)
-
-    random.shuffle(population)
-    return population
 
 
 populations = []
@@ -109,7 +108,7 @@ stats.register("max", np.max)
 stats.register("avg", np.mean)
 
 # Create the hall of fame object
-hof = tools.HallOfFame(HALL_OF_FAME_SIZE)
+#hof = tools.HallOfFame(HALL_OF_FAME_SIZE) # Not actually used at the moment
 
 # ============================================
 # This was the previous simple evolutionary algorithm simulation start. We must manually simulate for more finegrain control
@@ -162,6 +161,9 @@ for gen in range(MAX_GENERATIONS):
             toolbox.mutate(c1)
             toolbox.mutate(c2)
 
+            # After crossover and mutation, repair any overweight individuals
+            c1 = repair_individual(c1, knapsack)
+            c2 = repair_individual(c2, knapsack)
             # Evaluate children fitness
             c1.fitness.values = toolbox.evaluate(c1)
             c2.fitness.values = toolbox.evaluate(c2)
@@ -174,7 +176,7 @@ for gen in range(MAX_GENERATIONS):
             #     offspring_dict[child_assigned_population].extend([c2])
             offspring_dict[child_assigned_population].extend([c1]) # Add both children and crop infavourable later
             offspring_dict[child_assigned_population].extend([c2])
-    ELITE_SIZE = 1
+
     # Before Elitism, track statistics
     all_children = [child for plist in offspring_dict.values() for child in plist]
 

@@ -1,0 +1,97 @@
+import random
+import numpy as np
+from deap import creator
+
+
+def create_feasible_individual(knapsack_instance):
+    """
+    Creates a guaranteed feasible solution using the Greedy by Density heuristic.
+    """
+    # 1. Prepare items with density (Value/Weight)
+    # Item format in Knapsack class is (weight, value)
+    indexed_items = []
+    for i, (weight, value) in enumerate(knapsack_instance.items):
+        if weight > 0:
+            density = value / weight
+            indexed_items.append((density, weight, value, i))
+        else:
+            # Handle zero weight items by assigning infinite density
+            indexed_items.append((float('inf'), weight, value, i))
+
+    # 2. Sort by density (descending)
+    indexed_items.sort(key=lambda x: x[0], reverse=True)
+
+    # 3. Greedily select items up to capacity (with some randomization)
+    individual = [0] * len(knapsack_instance.items)
+    current_weight = 0
+
+    for density, weight, value, index in indexed_items:
+        # Introduce a small chance of skipping the item for added diversity
+        if random.random() < 0.1:  # 10% chance to skip
+            continue
+
+        if current_weight + weight <= knapsack_instance.maxCapacity:
+            individual[index] = 1
+            current_weight += weight
+
+        # Optimization: Stop once the knapsack is mostly full
+        if current_weight > knapsack_instance.maxCapacity * 0.95:
+            break
+
+    return individual
+def init_hybrid_population(toolbox, pop_size, knapsack_instance, feasible_ratio=0.5):
+    """Initializes a population with a mix of random and heuristically feasible individuals."""
+
+    n_feasible = int(pop_size * feasible_ratio)
+    population = []
+
+    # Generate Feasible Individuals
+    for _ in range(n_feasible):
+        ind_list = create_feasible_individual(knapsack_instance)
+        population.append(creator.Individual(ind_list))
+
+    # Generate Random Individuals
+    random_pop = toolbox.populationCreator(n=pop_size - n_feasible)
+    population.extend(random_pop)
+
+    random.shuffle(population)
+    return population
+
+def repair_individual(ind, knapsack):
+    """
+    Ensures an individual is feasible (total weight <= capacity).
+    Removes items with the lowest value/weight ratio first.
+    """
+    # Compute current total weight
+    total_weight = 0
+    for i, bit in enumerate(ind):
+        if bit:
+            w, v = knapsack.items[i]
+            total_weight += w
+
+    # Already feasible? nothing to do.
+    if total_weight <= knapsack.maxCapacity:
+        return ind
+
+    # Build list of (index, value/weight ratio)
+    items_present = []
+    for i, bit in enumerate(ind):
+        if bit:
+            w, v = knapsack.items[i]
+            if w > 0:
+                items_present.append((i, v / w))
+            else:
+                items_present.append((i, float('inf')))
+
+    # Sort items by worst ratio first (we want to remove worst items)
+    items_present.sort(key=lambda x: x[1])  # ascending ratio
+
+    # Remove items until feasible
+    for idx, ratio in items_present:
+        ind[idx] = 0  # remove item
+        w, v = knapsack.items[idx]
+        total_weight -= w
+        if total_weight <= knapsack.maxCapacity:
+            break
+
+    return ind
