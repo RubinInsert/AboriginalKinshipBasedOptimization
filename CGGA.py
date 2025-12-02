@@ -68,8 +68,11 @@ P_CROSSOVER = 0.9
 P_MUTATION = 0.005
 MAX_GENERATIONS = 100000 # Safety stoppage
 MAX_TIME_S = 10
-HALL_OF_FAME_SIZE = 10
+HALL_OF_FAME_SIZE = 10 # Does nothing for now.
 ELITE_SIZE = 1 # 1 Elite per group. Total 8 Elites.
+MIGRATION_FREQ = 2 # Every X generations,
+MIGRATION_SIZE = 5 # Migrate X number of people per group
+
 # Random Seed
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
@@ -151,17 +154,11 @@ for gen in range(MAX_GENERATIONS):
         break
     offspring_dict = {i: [] for i in range(len(populations))} # Reset dict for new generation
     # Block of code to calculate who the other parent should be, and where the children should go
-    for father_population_index in range(len(populations)):
-        father_warlpiri_code = Population_Index_Dict[father_population_index]
-        father_group_warlpiri = Warlpiri_Subsection(father_warlpiri_code) # Get Father's Warlpiri code. E.g. P1A
-        ideal_partner_warlpiri = father_group_warlpiri.get_ideal_wife()
-        ideal_partner_index = Population_Patromiety_Dict[ideal_partner_warlpiri.SemiPatrimoiety] # Convert Warlpiri -> Population Index
-        child_warlpiri = father_group_warlpiri.get_child_node()
-        child_assigned_population = Population_Patromiety_Dict[child_warlpiri.SemiPatrimoiety] # E.g. P1A -> Index[0]
+    for group_index in range(len(populations)):
 
         # Select the chosen populations
-        father_group = toolbox.select(populations[father_population_index], len(populations[father_population_index]))  # Just as a test we will get the first population
-        mother_group = toolbox.select(populations[ideal_partner_index], len(populations[ideal_partner_index])) # Get the accompanied mother group
+        father_group = toolbox.select(populations[group_index], len(populations[group_index]))  # Just as a test we will get the first population
+        mother_group = toolbox.select(populations[group_index], len(populations[group_index])) # Get the accompanied mother group
 
         for p0, p1 in zip(father_group, mother_group): # Pair a father to a mother
             # Clone the parents so we can apply mutations without affecting original pair
@@ -189,8 +186,8 @@ for gen in range(MAX_GENERATIONS):
             #     offspring_dict[child_assigned_population].extend([c1])
             # else:
             #     offspring_dict[child_assigned_population].extend([c2])
-            offspring_dict[child_assigned_population].extend([c1]) # Add both children and crop infavourable later
-            offspring_dict[child_assigned_population].extend([c2])
+            offspring_dict[group_index].extend([c1]) # Add both children and crop infavourable later
+            offspring_dict[group_index].extend([c2])
 
     # Before Elitism, track statistics
     all_children = [child for plist in offspring_dict.values() for child in plist]
@@ -214,6 +211,34 @@ for gen in range(MAX_GENERATIONS):
         sorted_child = sorted(child_list, key=lambda ind: ind.fitness.values[0], reverse=True)
         elite = sorted_old[:ELITE_SIZE]
         populations[target_population][:] = elite + sorted_child[:len(populations[target_population]) - ELITE_SIZE]
+
+    # MIGRATION LOGIC
+    if gen % MIGRATION_FREQ == 0: # Time for Migration!
+        # Clone the best migrants from each population first
+        migrants_all_groups = []
+        for pop in populations:
+            # Select the best individuals to travel
+            # Use toolbox.clone to ensure we deep copy
+            best_migrants = [toolbox.clone(ind) for ind in tools.selBest(pop, MIGRATION_SIZE)]
+            migrants_all_groups.append(best_migrants)
+
+        # Place migrants into the next population in the cycle
+        for i in range(len(populations)):
+            target_index = (i + 1) % len(populations)# Calculate the target index (Ring Topology: 1 -> 2 -> 3 -> 1)
+            incoming_migrants = migrants_all_groups[i]
+            target_population = populations[target_index]
+
+            # Sort the target_population by lowest fitness first so we can override the worst individuals
+            target_population.sort(key=lambda ind: ind.fitness.values[0])
+
+            # Replace the worst individuals with the incoming best migrants
+            for j in range(MIGRATION_SIZE):
+                # Overwrite the worst (index j because we sorted lowest-first)
+                target_population[j] = incoming_migrants[j]
+
+
+
+    # END OF MAIN GEN ALG LOOP
 
     # Print best of children
     print(f"Gen {gen}: ", end="")
