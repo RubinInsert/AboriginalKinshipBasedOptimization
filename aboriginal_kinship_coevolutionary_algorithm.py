@@ -34,6 +34,7 @@ from knapsack import Knapsack
 import numpy as np
 from kinship_structure_navigation import Warlpiri_Subsection
 from GA_helpers import init_hybrid_population, repair_individual
+import time
 Population_Index_Dict = {
     0: "P1A",
     1: "P1B",
@@ -56,7 +57,7 @@ Population_Patromiety_Dict = {v: k for k, v in Population_Index_Dict.items()} # 
 
 
 # Create an instance of a Knapsack problem
-p_file = "Knapsack_Problems/problemInstances/n_400_c_100000000_g_2_f_0.3_eps_0.001_s_300/test.in"
+p_file = "Knapsack_Problems/problemInstances/n_1200_c_1000000_g_10_f_0.3_eps_0_s_300/test.in"
 opt_file = "Knapsack_Problems/optima.csv"
 knapsack = Knapsack(p_file, opt_file)
 
@@ -65,7 +66,8 @@ ITEMS_LENGTH = len(knapsack)
 POPULATION_SIZE = 1000
 P_CROSSOVER = 0.9
 P_MUTATION = 0.005
-MAX_GENERATIONS = 100
+MAX_GENERATIONS = 100000 # Safety stoppage
+MAX_TIME_S = 10
 HALL_OF_FAME_SIZE = 10
 ELITE_SIZE = 1 # 1 Elite per group. Total 8 Elites.
 # Random Seed
@@ -87,7 +89,7 @@ toolbox.register("individualCreator", tools.initRepeat, creator.Individual, tool
 toolbox.register('populationCreator', tools.initRepeat, list, toolbox.individualCreator)
 # Define 8 Populations with their index correlating to the Population_Index_Dict
 
-
+start_time = time.time() # Start Algorithm Timer
 populations = []
 BASE_POP_SIZE = floor(POPULATION_SIZE / 8)
 
@@ -142,6 +144,11 @@ pop_max_history = {i: [] for i in range(8)}  # one list per population
 
 # Begin Evolutionary Loop
 for gen in range(MAX_GENERATIONS):
+    elapsed_time = time.time() - start_time
+    if elapsed_time > MAX_TIME_S:
+        print(f"\nTime Limit Reached: {elapsed_time:.2f}s > {MAX_TIME_S}s")
+        print(f"Stopping at Generation {gen}")
+        break
     offspring_dict = {i: [] for i in range(len(populations))} # Reset dict for new generation
     # Block of code to calculate who the other parent should be, and where the children should go
     for father_population_index in range(len(populations)):

@@ -1,9 +1,3 @@
-# Knapsack - Deap
-# Time
-# Preset Knapsack + Deap Implementation (Contains most optimal solution)
-# Comparison: Wilcoxon Ranked Sum Test
-
-
 # KNAPSACK PROBLEMS: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/mknapinfo.html
 # KEY FEATURES:
 # 8 Groups
@@ -40,6 +34,7 @@ from knapsack import Knapsack
 import numpy as np
 from kinship_structure_navigation import Warlpiri_Subsection
 from GA_helpers import init_hybrid_population, repair_individual
+import time
 Population_Index_Dict = {
     0: "P1A",
     1: "P1B",
@@ -62,7 +57,7 @@ Population_Patromiety_Dict = {v: k for k, v in Population_Index_Dict.items()} # 
 
 
 # Create an instance of a Knapsack problem
-p_file = "Knapsack_Problems/problemInstances/n_400_c_100000000_g_2_f_0.3_eps_0.001_s_300/test.in"
+p_file = "Knapsack_Problems/problemInstances/n_1200_c_1000000_g_10_f_0.3_eps_0_s_300/test.in"
 opt_file = "Knapsack_Problems/optima.csv"
 knapsack = Knapsack(p_file, opt_file)
 
@@ -71,9 +66,13 @@ ITEMS_LENGTH = len(knapsack)
 POPULATION_SIZE = 1000
 P_CROSSOVER = 0.9
 P_MUTATION = 0.005
-MAX_GENERATIONS = 100
-HALL_OF_FAME_SIZE = 10
+MAX_GENERATIONS = 100000 # Safety stoppage
+MAX_TIME_S = 10
+HALL_OF_FAME_SIZE = 10 # Does nothing for now.
 ELITE_SIZE = 1 # 1 Elite per group. Total 8 Elites.
+MIGRATION_FREQ = 2 # Every X generations,
+MIGRATION_SIZE = 5 # Migrate X number of people per group
+
 # Random Seed
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
@@ -93,7 +92,7 @@ toolbox.register("individualCreator", tools.initRepeat, creator.Individual, tool
 toolbox.register('populationCreator', tools.initRepeat, list, toolbox.individualCreator)
 # Define 8 Populations with their index correlating to the Population_Index_Dict
 
-
+start_time = time.time() # Start Algorithm Timer
 populations = []
 BASE_POP_SIZE = floor(POPULATION_SIZE / 8)
 
@@ -148,13 +147,18 @@ pop_max_history = {i: [] for i in range(8)}  # one list per population
 
 # Begin Evolutionary Loop
 for gen in range(MAX_GENERATIONS):
+    elapsed_time = time.time() - start_time
+    if elapsed_time > MAX_TIME_S:
+        print(f"\nTime Limit Reached: {elapsed_time:.2f}s > {MAX_TIME_S}s")
+        print(f"Stopping at Generation {gen}")
+        break
     offspring_dict = {i: [] for i in range(len(populations))} # Reset dict for new generation
     # Block of code to calculate who the other parent should be, and where the children should go
-    for population_index in range(len(populations)):
+    for group_index in range(len(populations)):
 
         # Select the chosen populations
-        father_group = toolbox.select(populations[population_index], len(populations[population_index]))  # Just as a test we will get the first population
-        mother_group = toolbox.select(populations[population_index], len(populations[population_index])) # Get the accompanied mother group
+        father_group = toolbox.select(populations[group_index], len(populations[group_index]))  # Just as a test we will get the first population
+        mother_group = toolbox.select(populations[group_index], len(populations[group_index])) # Get the accompanied mother group
 
         for p0, p1 in zip(father_group, mother_group): # Pair a father to a mother
             # Clone the parents so we can apply mutations without affecting original pair
@@ -175,9 +179,15 @@ for gen in range(MAX_GENERATIONS):
             # Evaluate children fitness
             c1.fitness.values = toolbox.evaluate(c1)
             c2.fitness.values = toolbox.evaluate(c2)
+            # c2.fitness.values = ()
 
-            offspring_dict[population_index].extend([c1]) # Add both children and crop infavourable later
-            offspring_dict[population_index].extend([c2])
+            # Add new offspring to list of new children
+            # if c1.fitness.values[0] > c2.fitness.values[0]:
+            #     offspring_dict[child_assigned_population].extend([c1])
+            # else:
+            #     offspring_dict[child_assigned_population].extend([c2])
+            offspring_dict[group_index].extend([c1]) # Add both children and crop infavourable later
+            offspring_dict[group_index].extend([c2])
 
     # Before Elitism, track statistics
     all_children = [child for plist in offspring_dict.values() for child in plist]
@@ -201,6 +211,34 @@ for gen in range(MAX_GENERATIONS):
         sorted_child = sorted(child_list, key=lambda ind: ind.fitness.values[0], reverse=True)
         elite = sorted_old[:ELITE_SIZE]
         populations[target_population][:] = elite + sorted_child[:len(populations[target_population]) - ELITE_SIZE]
+
+    # MIGRATION LOGIC
+    if gen % MIGRATION_FREQ == 0: # Time for Migration!
+        # Clone the best migrants from each population first
+        migrants_all_groups = []
+        for pop in populations:
+            # Select the best individuals to travel
+            # Use toolbox.clone to ensure we deep copy
+            best_migrants = [toolbox.clone(ind) for ind in tools.selBest(pop, MIGRATION_SIZE)]
+            migrants_all_groups.append(best_migrants)
+
+        # Place migrants into the next population in the cycle
+        for i in range(len(populations)):
+            target_index = (i + 1) % len(populations)# Calculate the target index (Ring Topology: 1 -> 2 -> 3 -> 1)
+            incoming_migrants = migrants_all_groups[i]
+            target_population = populations[target_index]
+
+            # Sort the target_population by lowest fitness first so we can override the worst individuals
+            target_population.sort(key=lambda ind: ind.fitness.values[0])
+
+            # Replace the worst individuals with the incoming best migrants
+            for j in range(MIGRATION_SIZE):
+                # Overwrite the worst (index j because we sorted lowest-first)
+                target_population[j] = incoming_migrants[j]
+
+
+
+    # END OF MAIN GEN ALG LOOP
 
     # Print best of children
     print(f"Gen {gen}: ", end="")
@@ -238,27 +276,4 @@ plt.legend()
 plt.xlabel("Generation")
 plt.ylabel("Fitness")
 plt.title("Fitness of Offspring Over Generations")
-plt.show()
-
-# Create the hall of fame object
-hof = tools.HallOfFame(HALL_OF_FAME_SIZE)
-
-# Define the algorithm
-population, logbook = algorithms.eaSimple(toolbox.populationCreator(n=POPULATION_SIZE), toolbox, cxpb=P_CROSSOVER, mutpb=P_MUTATION, ngen=MAX_GENERATIONS, stats=stats, halloffame=hof, verbose=True)
-
-# Print the best ever individual
-print("Best Individual: ", hof.items[0])
-print("Fitness:", knapsack.getTotalValue(hof.items[0]))
-knapsack.printItems(hof.items[0])
-
-# Return the max and mean values
-maxFitnessValues, meanFitnessValues = logbook.select("max", "avg")
-
-# Plot the max and mean vals
-plt.plot(maxFitnessValues, color='red')
-plt.plot(meanFitnessValues, color='green')
-plt.legend(('Max', 'Mean'), loc='lower right')
-plt.xlabel('Generation')
-plt.ylabel('Max / Average Fitness')
-plt.title('Max and Mean Fitness over Generations')
 plt.show()
