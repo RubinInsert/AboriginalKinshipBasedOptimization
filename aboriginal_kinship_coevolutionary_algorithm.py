@@ -12,11 +12,19 @@
 # Implement HOF. Different to Eliteism (Global effect)
 # Change from limiting generations, to limiting algorithm run-time. (Continue tracking generations for additional statistics however)
 # - What should be considered the start of the algorithm? I.e. is the initialization of population included?
+# + Start from the initialization of the population.
+# + Measure the average quality of initial population -> The improvement over time.
 # Possibly update the generic evolutionary algorithm to include the above key features for an additional benchmark
 # Generic Co-evolutionary algorithm
 # Questions:
 # - What Co-evolutionary algorithm would be best to benchmark against? E.g. competitive or cooperative? I presume competitive?
+#  + Competitive Co-Evolutionary Algorithm
+# + The children and parents remain in the same sub-pop.
+# + Check papers for paremeters, Clockwise or Random.
 # - How should the generic co-evolutionary algorithm function? should the children just be placed in random groups? are parents chosen from their same group?
+
+# + Display optimality as a percentage rather than subtraction: Allows comparison across instances
+# + As algorithm converges P_CROSSOVER--, P_MUTATION++
 import random
 from math import floor
 
@@ -48,16 +56,16 @@ Population_Patromiety_Dict = {v: k for k, v in Population_Index_Dict.items()} # 
 
 
 # Create an instance of a Knapsack problem
-p_file = "Knapsack_Problems/problemInstances/n_600_c_1000000_g_10_f_0.1_eps_0.0001_s_100/test.in"
+p_file = "Knapsack_Problems/problemInstances/n_400_c_100000000_g_2_f_0.3_eps_0.001_s_300/test.in"
 opt_file = "Knapsack_Problems/optima.csv"
 knapsack = Knapsack(p_file, opt_file)
 
 # Defining Problem Constraints
 ITEMS_LENGTH = len(knapsack)
-POPULATION_SIZE = 2000
+POPULATION_SIZE = 1000
 P_CROSSOVER = 0.9
 P_MUTATION = 0.005
-MAX_GENERATIONS = 500
+MAX_GENERATIONS = 100
 HALL_OF_FAME_SIZE = 10
 ELITE_SIZE = 1 # 1 Elite per group. Total 8 Elites.
 # Random Seed

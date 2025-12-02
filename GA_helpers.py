@@ -27,6 +27,7 @@ def create_feasible_individual(knapsack_instance):
 
     for density, weight, value, index in indexed_items:
         # Introduce a small chance of skipping the item for added diversity
+        # RANKED CHOICE
         if random.random() < 0.1:  # 10% chance to skip
             continue
 
