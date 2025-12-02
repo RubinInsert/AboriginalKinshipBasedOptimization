@@ -107,7 +107,8 @@ class Knapsack:
         print(f"Total Weight: {totalWeight} / {self.maxCapacity}")
         print(f"Total Value:  {totalValue}")
         if self.optimal_value:
-            print(f"Optimality Gap: {self.optimal_value - totalValue}")
+            print(f"Absolute Optimality Gap (Subtraction): {self.optimal_value - totalValue}")
+            print(f"Relative Optimality Gap (Percentage): {(self.optimal_value - totalValue) / self.optimal_value * 100:.4f}% (4 d.p.)")
 
 
 if __name__ == "__main__":
