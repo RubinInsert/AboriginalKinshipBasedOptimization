@@ -71,8 +71,8 @@ def repair_individual(ind, knapsack):
             total_weight += w
 
     # Already feasible? nothing to do.
-    if total_weight <= knapsack.maxCapacity:
-        return ind
+    # if total_weight <= knapsack.maxCapacity: # We want to ensure the greedy fill still occurs on feasible individuals
+    #     return ind
 
     # Build list of (index, value/weight ratio)
     items_present = []
@@ -86,13 +86,38 @@ def repair_individual(ind, knapsack):
 
     # Sort items by worst ratio first (we want to remove worst items)
     items_present.sort(key=lambda x: x[1])  # ascending ratio
-
+    if total_weight <= knapsack.maxCapacity:
     # Remove items until feasible
-    for idx, ratio in items_present:
-        ind[idx] = 0  # remove item
-        w, v = knapsack.items[idx]
-        total_weight -= w
-        if total_weight <= knapsack.maxCapacity:
-            break
+        for idx, ratio in items_present:
+            ind[idx] = 0  # remove item
+            w, v = knapsack.items[idx]
+            total_weight -= w
+            if total_weight <= knapsack.maxCapacity:
+                break
+    # FILL PHASE
+    items_available_to_add = []
+
+    for i, bit in enumerate(ind):
+        if not bit:  # Only consider items currently NOT selected (i.e., item index 'i' has ind[i]=0)
+            w, v = knapsack.items[i]
+
+            # Calculate ratio, handling weight=0 case
+            if w > 0:
+                ratio = v / w
+            else:
+                ratio = float('inf')
+
+            # Store (index, ratio, weight) for adding
+            items_available_to_add.append((i, ratio, w))
+
+    # Sort by best ratio first (descending ratio)
+    items_available_to_add.sort(key=lambda x: x[1], reverse=True)
+
+    # Greedily add items
+    for idx, ratio, w in items_available_to_add:
+        # Check if the item fits in the remaining capacity
+        if total_weight + w <= knapsack.maxCapacity:
+            ind[idx] = 1  # Add item
+            total_weight += w
 
     return ind

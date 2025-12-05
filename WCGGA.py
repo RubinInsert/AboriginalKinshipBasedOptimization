@@ -1,7 +1,19 @@
+# 4/12/2025 Logs:
+# Changed Tourn Size from 3 to 2, so elites are less dominant
+# Changed mutation quantity from a constant value to 2/ITEMS_LENGTH
+# Changed Mating from cxUniform to cxTwoPoint to more accurately represent mating, and provide better results
+# Current Best on n_1200_c_1000000_g_10_f_0.3_eps_0.0001_s_300: 1036019
+# Consider adding Greedy Fill in repair operator
+
+# 5/12/2025 Logs:
+# Added Greedy Fill in repair operator
+# Current Best on n_1200_c_1000000_g_10_f_0.3_eps_0.0001_s_300: 1036114.0 (OPTIMAL REACHED)
 # KNAPSACK PROBLEMS: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/mknapinfo.html
+
+
 # KEY FEATURES:
 # 8 Groups
-# Uses cxUniform Crossover
+# Uses cxTwoPoint Crossover
 # Uses mutFlipBit Mutation
 # Individuals are initialized through the 'init_hybrid_population' function which uses a greedy algorithm on a sorted v/w ratio list.
 # - Without this individuals are too far from any probable options for the GA to make any progress.
@@ -57,7 +69,7 @@ Population_Patromiety_Dict = {v: k for k, v in Population_Index_Dict.items()} # 
 
 
 # Create an instance of a Knapsack problem
-p_file = "Knapsack_Problems/problemInstances/n_1200_c_1000000_g_10_f_0.3_eps_0_s_300/test.in"
+p_file = "Knapsack_Problems/problemInstances/n_1200_c_1000000_g_10_f_0.3_eps_0.0001_s_300/test.in"
 opt_file = "Knapsack_Problems/optima.csv"
 knapsack = Knapsack(p_file, opt_file)
 
@@ -65,9 +77,9 @@ knapsack = Knapsack(p_file, opt_file)
 ITEMS_LENGTH = len(knapsack)
 POPULATION_SIZE = 1000
 P_CROSSOVER = 0.9
-P_MUTATION = 0.005
+P_MUTATION = (2 / ITEMS_LENGTH)
 MAX_GENERATIONS = 100000 # Safety stoppage
-MAX_TIME_S = 10
+MAX_TIME_S = 300
 HALL_OF_FAME_SIZE = 10
 ELITE_SIZE = 1 # 1 Elite per group. Total 8 Elites.
 # Random Seed
@@ -106,8 +118,8 @@ def evaluate(individual):
 toolbox.register("evaluate", evaluate)
 
 # Create the genetic operators
-toolbox.register("select", tools.selTournament, tournsize=3)
-toolbox.register("mate", tools.cxUniform, indpb=P_CROSSOVER)
+toolbox.register("select", tools.selTournament, tournsize=2)
+toolbox.register("mate", tools.cxTwoPoint)
 toolbox.register("mutate", tools.mutFlipBit, indpb=P_MUTATION)
 
 # Create the statistics object
