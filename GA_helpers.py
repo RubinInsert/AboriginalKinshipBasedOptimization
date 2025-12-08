@@ -85,15 +85,24 @@ def repair_individual(ind, knapsack):
                 items_present.append((i, float('inf')))
 
     # Sort items by worst ratio first (we want to remove worst items)
-    items_present.sort(key=lambda x: x[1])  # ascending ratio
-    if total_weight <= knapsack.maxCapacity:
-    # Remove items until feasible
-        for idx, ratio in items_present:
-            ind[idx] = 0  # remove item
-            w, v = knapsack.items[idx]
-            total_weight -= w
-            if total_weight <= knapsack.maxCapacity:
-                break
+    #items_present.sort(key=lambda x: x[1])  # ascending ratio
+    # if total_weight <= knapsack.maxCapacity:
+    # # Remove items until feasible - GREEDY
+    # #     for idx, ratio in items_present:
+    # #         ind[idx] = 0  # remove item
+    # #         w, v = knapsack.items[idx]
+    # #         total_weight -= w
+    # #         if total_weight <= knapsack.maxCapacity:
+    # #             break
+
+    # Remove items until feasible randomized
+    items_present = [i for i, gene in enumerate(ind) if gene == 1]
+    while total_weight > knapsack.maxCapacity:
+        index_to_remove = random.choice(items_present)
+        w, v = knapsack.items[index_to_remove]
+        ind[index_to_remove] = 0
+        total_weight -= w
+        items_present.remove(index_to_remove)
     # # FILL PHASE
     # if is_originally_overweight:
     #     items_available_to_add = []

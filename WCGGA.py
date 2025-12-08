@@ -1,11 +1,12 @@
-# 4/12/2025 Logs:
+
 # Changed Tourn Size from 3 to 2, so elites are less dominant
 # Changed mutation quantity from a constant value to 2/ITEMS_LENGTH
 # Changed Mating from cxUniform to cxTwoPoint to more accurately represent mating, and provide better results
 # Current Best on n_1200_c_1000000_g_10_f_0.3_eps_0.0001_s_300: 1036019
 # Consider adding Greedy Fill in repair operator
 
-# 5/12/2025 Logs:
+
+
 # Added Greedy Fill in repair operator
 # Current Best on n_1200_c_1000000_g_10_f_0.3_eps_0.0001_s_300: 1036114.0 (OPTIMAL REACHED)
 # KNAPSACK PROBLEMS: https://people.brunel.ac.uk/~mastjjb/jeb/orlib/mknapinfo.html
@@ -102,7 +103,10 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
     toolbox.register("evaluate", evaluate)
 
     # Create the genetic operators
-    toolbox.register("select", tools.selTournament, tournsize=2)
+    #toolbox.register("select", tools.selTournament, tournsize=3)
+    toolbox.register("selectFather", tools.selTournament, tournsize=2)
+    toolbox.register("selectMother", tools.selTournament, tournsize=2)
+    #toolbox.register("selectMother", tools.selStochasticUniversalSampling)
     toolbox.register("mate", tools.cxTwoPoint)
     toolbox.register("mutate", tools.mutFlipBit, indpb=P_MUTATION)
 
@@ -145,6 +149,7 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
             break
         offspring_dict = {i: [] for i in range(len(populations))}  # Reset dict for new generation
         # Block of code to calculate who the other parent should be, and where the children should go
+
         for father_population_index in range(len(populations)):
             father_warlpiri_code = Population_Index_Dict[father_population_index]
             father_group_warlpiri = Warlpiri_Subsection(father_warlpiri_code)  # Get Father's Warlpiri code. E.g. P1A
@@ -154,11 +159,12 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
             child_warlpiri = father_group_warlpiri.get_child_node()
             child_assigned_population = Population_Patromiety_Dict[
                 child_warlpiri.SemiPatrimoiety]  # E.g. P1A -> Index[0]
-
-            # Select the chosen populations
-            father_group = toolbox.select(populations[father_population_index], len(
+            #
+            # CHECK & CHANGE: ONLY ITERATING ONCE. Iterate 2X times for X Population Size, Then Choose best X children
+            # Roulette Wheel
+            father_group = toolbox.selectFather(populations[father_population_index], len(
                 populations[father_population_index]))  # Just as a test we will get the first population
-            mother_group = toolbox.select(populations[ideal_partner_index],
+            mother_group = toolbox.selectMother(populations[ideal_partner_index],
                                           len(populations[ideal_partner_index]))  # Get the accompanied mother group
 
             for p0, p1 in zip(father_group, mother_group):  # Pair a father to a mother
@@ -209,10 +215,50 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
         # ELITISM (SAVE 5 best parents from each generation)
         for target_population, child_list in offspring_dict.items():
             sorted_old = sorted(populations[target_population], key=lambda ind: ind.fitness.values[0], reverse=True)
-            sorted_child = sorted(child_list, key=lambda ind: ind.fitness.values[0], reverse=True)
+            #sorted_child = sorted(child_list, key=lambda ind: ind.fitness.values[0], reverse=True)
+            random.shuffle(child_list)
             elite = sorted_old[:ELITE_SIZE]
-            populations[target_population][:] = elite + sorted_child[:len(populations[target_population]) - ELITE_SIZE]
+            populations[target_population][:] = elite + child_list[:len(populations[target_population]) - ELITE_SIZE]
 
+        # APOCOLYPSE
+        global_max, global_avg = 0, 0
+        if gen > 50:
+            # 2. Calculate global variation
+            # We look at every single individual in all 8 groups
+            group_bests = [max(ind.fitness.values[0] for ind in pop) for pop in populations]
+
+            # Check if all groups have converged to the EXACT SAME number
+            # set() removes duplicates. If len(set) == 1, everyone is identical.
+            unique_bests = len(set(group_bests))
+
+            # 3. Check for Stagnation (Convergence)
+            # If the difference between the Best Guy and the Average Guy is less than 0.1%
+            # It means everyone is basically a clone.
+            if unique_bests == 1:
+                print(f"\n>>> APOCALYPSE TRIGGERED AT GEN {gen} <<<")
+                print(f"    Stagnation detected (Max: {global_max}, Avg: {global_avg:.2f}).")
+
+                # 4. Identify the "Ark" (The best group to save)
+                best_pop_index = 0
+                best_pop_max = -1
+                for i, pop in enumerate(populations):
+                    current_max = max(ind.fitness.values[0] for ind in pop)
+                    if current_max > best_pop_max:
+                        best_pop_max = current_max
+                        best_pop_index = i
+
+                print(f"    SAVING: Group {Population_Index_Dict[best_pop_index]} (Fitness: {best_pop_max})")
+                print("    RESETTING: All other 7 groups to random greedy starts.")
+
+                # 5. Nuke the other 7 groups
+                for i in range(len(populations)):
+                    if i != best_pop_index:
+                        # Re-run initialization for this group
+                        populations[i] = toolbox.populationCreator(n=BASE_POP_SIZE)
+                        # CRITICAL: Evaluate them immediately so they have fitness values for the next loop
+                        for ind in populations[i]:
+                            ind = repair_individual(ind, knapsack)
+                            ind.fitness.values = toolbox.evaluate(ind)
         # Print best of children
         print(f"Gen {gen}: ", end="")
         for pop_index, pop in enumerate(populations):

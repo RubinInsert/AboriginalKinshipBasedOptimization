@@ -20,8 +20,8 @@ The benefit derrived from CGG Algorithms is it's ability for each group to be pr
 ### GA Main Loop
 - For every iteration in the GA loop, each population is iterated over once.
   - For every population, each individual in the population is iterated over once.
-    - For every individual;
-      - An individual from their pre-defined marrigage group is chosen as their partner
+    - For every individual (chosen by a tournament of two random individuals);
+      - An individual from their pre-defined marrigage group is chosen as their partner (also through a 2 person tournament selection)
       - Both parents are cloned and are considered the two offspring from the parents
       - The children (cloned parents) then have a percentage chance of performing **TWO-POINT** crossover (`P_CROSSOVER`) with each other
       - Each child then has a percentage chance of performing **BIT FLIP** mutation (`P_MUTATION`)
