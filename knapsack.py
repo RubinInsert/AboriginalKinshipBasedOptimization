@@ -92,6 +92,18 @@ class Knapsack:
             # Standard Linear Penalty
             penalty = (totalWeight - self.maxCapacity) * 1000
             return totalValue - penalty
+
+    def getTotalWeight(self, individual):
+        """
+        Calculates the total weight of the selected items in the individual.
+        Assumes self.items is a list of (weight, value) tuples.
+        """
+        total_weight = 0
+        for i, bit in enumerate(individual):
+            if bit:
+                # Add the weight (index 0 of the item tuple)
+                total_weight += self.items[i][0]
+        return total_weight
     def printItems(self, binaryChoiceList):
         totalWeight = 0
         totalValue = 0

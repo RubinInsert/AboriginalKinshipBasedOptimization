@@ -46,12 +46,42 @@ class Warlpiri_Subsection(object):
 
 if __name__ == "__main__":
     testNode = Warlpiri_Subsection("P1A")
-    print(testNode.get_parents()[0].SemiPatrimoiety)
-    print(testNode.get_parents()[1].get_parents()[0].get_parents()[1].get_parents()[0].SemiPatrimoiety) # MFMF - Should be equal to the original node
 
-    # Finding all Father-Mother Pairs
-    for father_group in SemiPatrimoiety_Dictionary.keys():
-        father_node = Warlpiri_Subsection(father_group)
-        print("Father (", father_node.SemiPatrimoiety, ") ->", "Mother (", father_node.get_ideal_wife().SemiPatrimoiety, ")")
-
+    # Lets Create a lookup table to save resources. one for ideal wife one for child
+    # print("P1A -> ", Warlpiri_Subsection("P1A").get_child_node().SemiPatrimoiety)
+    # print("P1B -> ", Warlpiri_Subsection("P1B").get_child_node().SemiPatrimoiety)
+    # print("P2A -> ", Warlpiri_Subsection("P2A").get_child_node().SemiPatrimoiety)
+    # print("P2B -> ", Warlpiri_Subsection("P2B").get_child_node().SemiPatrimoiety)
+    # print("P3A -> ", Warlpiri_Subsection("P3A").get_child_node().SemiPatrimoiety)
+    # print("P3B -> ", Warlpiri_Subsection("P3B").get_child_node().SemiPatrimoiety)
+    # print("P4A -> ", Warlpiri_Subsection("P4A").get_child_node().SemiPatrimoiety)
+    # print("P4B -> ", Warlpiri_Subsection("P4B").get_child_node().SemiPatrimoiety)
+    Wirlpiri_Child = {
+        "P1A": "P1B",
+        "P1B": "P1A",
+        "P2A": "P2B",
+        "P2B": "P2A",
+        "P3A": "P3B",
+        "P3B": "P3A",
+        "P4A": "P4B",
+        "P4B": "P4A"
+    }
+    print("P1A -> ", Warlpiri_Subsection("P1A").get_ideal_wife().SemiPatrimoiety)
+    print("P1B -> ", Warlpiri_Subsection("P1B").get_ideal_wife().SemiPatrimoiety)
+    print("P2A -> ", Warlpiri_Subsection("P2A").get_ideal_wife().SemiPatrimoiety)
+    print("P2B -> ", Warlpiri_Subsection("P2B").get_ideal_wife().SemiPatrimoiety)
+    print("P3A -> ", Warlpiri_Subsection("P3A").get_ideal_wife().SemiPatrimoiety)
+    print("P3B -> ", Warlpiri_Subsection("P3B").get_ideal_wife().SemiPatrimoiety)
+    print("P4A -> ", Warlpiri_Subsection("P4A").get_ideal_wife().SemiPatrimoiety)
+    print("P4B -> ", Warlpiri_Subsection("P4B").get_ideal_wife().SemiPatrimoiety)
+    Wirlpiri_Wife = {
+        "P1A": "P4B",
+        "P1B": "P2A",
+        "P2A": "P1B",
+        "P2B": "P3A",
+        "P3A": "P2B",
+        "P3B": "P4A",
+        "P4A": "P3B",
+        "P4B": "P1A"
+    }
     # Fathers = P1A, P1B, P2B, P3B

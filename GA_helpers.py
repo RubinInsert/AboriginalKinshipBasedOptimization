@@ -1,7 +1,7 @@
 import random
 import numpy as np
 from deap import creator
-
+from operator import xor
 
 def create_feasible_individual(knapsack_instance):
     """
@@ -28,7 +28,7 @@ def create_feasible_individual(knapsack_instance):
     for density, weight, value, index in indexed_items:
         # Introduce a small chance of skipping the item for added diversity
         # RANKED CHOICE
-        if random.random() < 0.1:  # 10% chance to skip
+        if random.random() < 0.3:  # 10% chance to skip
             continue
 
         if current_weight + weight <= knapsack_instance.maxCapacity:
@@ -58,32 +58,28 @@ def init_hybrid_population(toolbox, pop_size, knapsack_instance, feasible_ratio=
     random.shuffle(population)
     return population
 
-def repair_individual(ind, knapsack):
+
+
+
+def get_hamming_distance(ind1, ind2):
+    # Using map with operator.xor is often faster than a python for-loop/zip
+    # for large lists in standard CPython
+    return sum(map(xor, ind1, ind2))
+def repair_individual_oldest(ind, knapsack):
     """
     Ensures an individual is feasible (total weight <= capacity).
     Removes items with the lowest value/weight ratio first.
     """
     # Compute current total weight
-    total_weight = 0
-    for i, bit in enumerate(ind):
-        if bit:
-            w, v = knapsack.items[i]
-            total_weight += w
-
+    total_weight = sum(knapsack.items[i][0] for i, bit in enumerate(ind) if bit)
     # Already feasible? nothing to do.
     # if total_weight <= knapsack.maxCapacity: # We want to ensure the greedy fill still occurs on feasible individuals
     #     return ind
     is_originally_overweight = total_weight > knapsack.maxCapacity
     # Build list of (index, value/weight ratio)
-    items_present = []
-    for i, bit in enumerate(ind):
-        if bit:
-            w, v = knapsack.items[i]
-            if w > 0:
-                items_present.append((i, v / w))
-            else:
-                items_present.append((i, float('inf')))
-
+    # Get indices of items currently in the bag
+    items_present = [i for i, gene in enumerate(ind) if gene == 1]
+    random.shuffle(items_present)
     # Sort items by worst ratio first (we want to remove worst items)
     #items_present.sort(key=lambda x: x[1])  # ascending ratio
     # if total_weight <= knapsack.maxCapacity:
@@ -96,13 +92,14 @@ def repair_individual(ind, knapsack):
     # #             break
 
     # Remove items until feasible randomized
-    items_present = [i for i, gene in enumerate(ind) if gene == 1]
-    while total_weight > knapsack.maxCapacity:
-        index_to_remove = random.choice(items_present)
-        w, v = knapsack.items[index_to_remove]
-        ind[index_to_remove] = 0
+    idx = 0
+    while total_weight > knapsack.maxCapacity and idx < len(items_present):
+        remove_index = items_present[idx]
+        w, v = knapsack.items[remove_index]
+
+        ind[remove_index] = 0
         total_weight -= w
-        items_present.remove(index_to_remove)
+        idx += 1  # Just move to the next item in the shuffled list
     # # FILL PHASE
     # if is_originally_overweight:
     #     items_available_to_add = []
@@ -129,5 +126,170 @@ def repair_individual(ind, knapsack):
     #         if total_weight + w <= knapsack.maxCapacity and random.random() < 0.5:
     #             ind[idx] = 1  # Add item
     #             total_weight += w
+
+    return ind
+
+
+def repair_individual_old(ind, knapsack):
+    """
+    Hybrid Repair:
+    1. Stochastic Removal: Removes items to fit capacity. Biased towards removing
+       inefficient items, but not purely greedy (avoids traps).
+    2. Greedy Fill: Fills remaining space with best available items.
+    """
+    total_weight = knapsack.getTotalWeight(ind)
+
+    # --- PHASE 1: REMOVAL (If overweight) ---
+    if total_weight > knapsack.maxCapacity:
+        # Get indices of items currently in the bag
+        items_in_bag = [i for i, bit in enumerate(ind) if bit == 1]
+
+        # We need to remove items until we fit.
+        # Instead of sorting (slow/greedy), we use a "Tournament of 2" for removal.
+        # We pick 2 items, and remove the one with the WORST v/w ratio.
+        # This is fast, stochastic, but smart.
+
+        while total_weight > knapsack.maxCapacity:
+            # Pick 2 random items from the bag
+            if len(items_in_bag) >= 2:
+                candidates = random.sample(items_in_bag, 2)
+                item_a = candidates[0]
+                item_b = candidates[1]
+
+                # Compare Value/Weight ratios
+                w_a, v_a = knapsack.items[item_a]
+                w_b, v_b = knapsack.items[item_b]
+                r_a = v_a / w_a if w_a > 0 else 0
+                r_b = v_b / w_b if w_b > 0 else 0
+
+                # Identify the "loser" (worse ratio)
+                victim = item_a if r_a < r_b else item_b
+            else:
+                # Fallback if only 1 item left (rare)
+                victim = items_in_bag[0]
+
+            # Remove the victim
+            ind[victim] = 0
+            w_victim, _ = knapsack.items[victim]
+            total_weight -= w_victim
+            items_in_bag.remove(victim)
+
+    # --- PHASE 2: GREEDY FILL (Always try to pack more!) ---
+    # Now that we are valid, let's see if we can squeeze in the best remaining items.
+
+            # 1. Identify items currently NOT in the bag
+            items_out_indices = [i for i, bit in enumerate(ind) if bit == 0]
+
+            # 2. Prepare candidates: (index, weight, ratio)
+            items_to_add = []
+            for i in items_out_indices:
+                w, v = knapsack.items[i]
+                if w > 0:
+                    ratio = v / w
+                    items_to_add.append((i, w, ratio))
+
+            # 3. Sort by Ratio Descending (Strict Greedy)
+            items_to_add.sort(key=lambda x: x[2], reverse=True)
+
+            # 4. Windowed Fill (The Magic Fix)
+            # Instead of iterating strict 0..N, we iterate in small random chunks.
+            # This preserves "Goodness" but breaks "Determinism".
+            WINDOW_SIZE = 5
+
+            i = 0
+            while i < len(items_to_add):
+                # Grab a chunk of the best remaining items
+                chunk = items_to_add[i: i + WINDOW_SIZE]
+
+                # Shuffle this chunk (Randomness!)
+                random.shuffle(chunk)
+
+                # Try to add items from this shuffled chunk
+                for index, w, ratio in chunk:
+                    if total_weight + w <= knapsack.maxCapacity:
+                        ind[index] = 1
+                        total_weight += w
+
+                        # Optimization: If almost full, stop early
+                        if knapsack.maxCapacity - total_weight < 1:
+                            return ind
+
+                i += WINDOW_SIZE
+
+            return ind
+
+    return ind
+
+
+def repair_individual(ind, knapsack):
+    """
+    Clumsy Hybrid Repair:
+    - Removal: 10% chance to 'drop the wrong item' (Exploration).
+    - Fill: Larger Window (20) to find non-greedy packing combinations.
+    """
+    total_weight = knapsack.getTotalWeight(ind)
+
+    # --- PHASE 1: CLUMSY REMOVAL ---
+    if total_weight > knapsack.maxCapacity:
+        items_in_bag = [i for i, bit in enumerate(ind) if bit == 1]
+
+        while total_weight > knapsack.maxCapacity:
+            # Tournament of 2
+            if len(items_in_bag) >= 2:
+                candidates = random.sample(items_in_bag, 2)
+                item_a, item_b = candidates[0], candidates[1]
+
+                w_a, v_a = knapsack.items[item_a]
+                w_b, v_b = knapsack.items[item_b]
+                r_a = v_a / w_a if w_a > 0 else 0
+                r_b = v_b / w_b if w_b > 0 else 0
+
+                # LOGIC CHANGE: 10% chance to act irrationally
+                # This prevents the "Magnet Effect" of always keeping the best items.
+                if random.random() < 0.10:
+                    victim = item_a if r_a > r_b else item_b  # Remove the BETTER one (Oops!)
+                else:
+                    victim = item_a if r_a < r_b else item_b  # Remove the WORSE one (Standard)
+            else:
+                victim = items_in_bag[0]
+
+            ind[victim] = 0
+            w_victim = knapsack.items[victim][0]
+            total_weight -= w_victim
+            items_in_bag.remove(victim)
+
+    # --- RE-SYNC WEIGHT (Float Drift Protection) ---
+    total_weight = knapsack.getTotalWeight(ind)
+
+    # --- PHASE 2: WIDER WINDOW FILL ---
+    items_out_indices = [i for i, bit in enumerate(ind) if bit == 0]
+
+    items_to_add = []
+    for i in items_out_indices:
+        w, v = knapsack.items[i]
+        if total_weight + w <= knapsack.maxCapacity:
+            if w > 0:
+                ratio = v / w
+                items_to_add.append((i, w, ratio))
+
+    # Sort by Ratio Descending
+    items_to_add.sort(key=lambda x: x[2], reverse=True)
+
+    # LOGIC CHANGE: Increase Window Size significantly
+    # A size of 20 allows "mediocre" items to be tested in combination
+    WINDOW_SIZE = 20
+
+    i = 0
+    while i < len(items_to_add):
+        chunk = items_to_add[i: i + WINDOW_SIZE]
+        random.shuffle(chunk)  # Shuffle the top 20 candidates
+
+        for index, w, ratio in chunk:
+            if total_weight + w <= knapsack.maxCapacity:
+                ind[index] = 1
+                total_weight += w
+                if knapsack.maxCapacity - total_weight < 0.001:
+                    return ind
+        i += WINDOW_SIZE
 
     return ind

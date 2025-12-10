@@ -46,8 +46,9 @@ import matplotlib.pyplot as plt
 from knapsack import Knapsack
 import numpy as np
 from kinship_structure_navigation import Warlpiri_Subsection
-from GA_helpers import init_hybrid_population, repair_individual
+from GA_helpers import init_hybrid_population, repair_individual, get_hamming_distance
 import time
+import keyboard
 Population_Index_Dict = {
     0: "P1A",
     1: "P1B",
@@ -57,6 +58,26 @@ Population_Index_Dict = {
     5: "P3B",
     6: "P4A",
     7: "P4B",
+}
+Wirlpiri_Child = {
+    "P1A": "P1B",
+    "P1B": "P1A",
+    "P2A": "P2B",
+    "P2B": "P2A",
+    "P3A": "P3B",
+    "P3B": "P3A",
+    "P4A": "P4B",
+    "P4B": "P4A"
+}
+Wirlpiri_Wife = {
+    "P1A": "P4B",
+    "P1B": "P2A",
+    "P2A": "P1B",
+    "P2B": "P3A",
+    "P3A": "P2B",
+    "P3B": "P4A",
+    "P4A": "P3B",
+    "P4B": "P1A"
 }
 Population_Patromiety_Dict = {v: k for k, v in Population_Index_Dict.items()} # Reverse lookup table
 
@@ -71,6 +92,13 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
     MAX_TIME_S = max_time
     # Note: ELITE_SIZE is not used in Crowding because "Elite" status is maintained automatically by the competition.
 
+    # Stagnation breaker
+    best_fitness_ever = 0
+    generations_without_improvement = 0
+    STAGNATION_LIMIT = 50  # If no new record in 20 gens, NUKE.
+    # Trackers for EACH of the 8 groups independently
+    group_best_fitness = [0] * 8
+    group_stagnation_counters = [0] * 8
     # Random Seed
     RANDOM_SEED = random_seed
     random.seed(RANDOM_SEED)
@@ -137,9 +165,8 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
 
                 # Identify Mother's Group using Warlpiri Kinship
                 father_code = Population_Index_Dict[father_idx]
-                father_node = Warlpiri_Subsection(father_code)
-                ideal_wife = father_node.get_ideal_wife()
-                mother_idx = Population_Patromiety_Dict[ideal_wife.SemiPatrimoiety]
+                ideal_wife = Wirlpiri_Wife[father_code]
+                mother_idx = Population_Patromiety_Dict[ideal_wife]
 
                 # Mother is chosen RANDOMLY from the correct Warlpiri group
                 # This ensures genetic mixing while obeying the strict marriage rule
@@ -162,21 +189,117 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
 
                 # --- C. CHILD PLACEMENT (Warlpiri Rules) ---
                 # Determine which group the child belongs to (Child follows Father's Totem path)
-                child_node = father_node.get_child_node()
-                child_dest_idx = Population_Patromiety_Dict[child_node.SemiPatrimoiety]
+                child_node = Wirlpiri_Child[father_code]
+                child_dest_idx = Population_Patromiety_Dict[child_node]
 
                 # --- D. CROWDING REPLACEMENT ---
                 # The child fights the person CURRENTLY occupying slot 'i' in the destination group.
                 # It does NOT fight the whole population.
                 incumbent = populations[child_dest_idx][i]
 
-                if child.fitness.values[0] > incumbent.fitness.values[0]:
-                    # Update In-Place: Child replaces the incumbent
-                    # We create a deep copy to be safe
+                # --- D. CROWDING REPLACEMENT (Restricted Tournament Selection) ---
+                # 1. Define how many candidates to check (Crowding Factor)
+                #    Larger window = Stronger crowding (more diversity preservation)
+                #    Smaller window = Faster convergence
+                CROWDING_WINDOW_SIZE = 3
+
+                # 2. Pick random candidates from the destination group
+                #    We include the current index 'i' to ensure steady turnover
+                candidate_indices = random.sample(range(BASE_POP_SIZE), CROWDING_WINDOW_SIZE - 1)
+                candidate_indices.append(i)
+
+                # 3. Find the candidate most similar to the child (Lowest Hamming Distance)
+                closest_incumbent_idx = -1
+                min_distance = float('inf')
+
+                target_pop = populations[child_dest_idx]
+
+                for idx in candidate_indices:
+                    dist = get_hamming_distance(child, target_pop[idx])
+                    if dist < min_distance:
+                        min_distance = dist
+                        closest_incumbent_idx = idx
+
+                # 4. Compete ONLY against the most similar individual found
+                closest_incumbent = target_pop[closest_incumbent_idx]
+
+                if child.fitness.values[0] >= closest_incumbent.fitness.values[0]:
+                    # Update In-Place: Child replaces its closest genetic relative
                     new_ind = creator.Individual(child)
                     new_ind.fitness.values = child.fitness.values
-                    populations[child_dest_idx][i] = new_ind
+                    target_pop[closest_incumbent_idx] = new_ind
+        for i, pop in enumerate(populations):
+            current_group_max = max(ind.fitness.values[0] for ind in pop)
 
+            # Check if this specific group beat its own record
+            if current_group_max > group_best_fitness[i]:
+                group_best_fitness[i] = current_group_max
+                group_stagnation_counters[i] = 0  # Reset
+            else:
+                group_stagnation_counters[i] += 1  # Increment
+
+            # ==========================================
+            # 3. CHECK FOR SYNCHRONIZED APOCALYPSE
+            # ==========================================
+        least_stagnant_count = min(group_stagnation_counters)
+
+        if least_stagnant_count >= STAGNATION_LIMIT:
+            print(f"\n>>> APOCALYPSE TRIGGERED AT GEN {gen} <<<")
+            print(f"    Reason: ALL 8 groups have been stuck for {STAGNATION_LIMIT} generations.")
+
+            # A. Find Noah (Global Best)
+            best_ind_global = None
+            best_fitness_global = -1
+
+            for pop in populations:
+                for ind in pop:
+                    if ind.fitness.values[0] > best_fitness_global:
+                        best_fitness_global = ind.fitness.values[0]
+                        best_ind_global = ind
+
+            # Deep copy Noah
+            noah = creator.Individual(best_ind_global)
+            noah.fitness.values = best_ind_global.fitness.values
+
+            print(f"    SAVING: Noah (Fitness: {best_fitness_global})")
+            print("    STRATEGY: Deploying Mutant Cluster Bomb & Random Reset.")
+
+            # B. Nuke Everything (PURE RANDOM RESET)
+            for i in range(len(populations)):
+                populations[i] = init_hybrid_population(
+                    toolbox,
+                    BASE_POP_SIZE,
+                    knapsack,
+                    feasible_ratio=0.0  # <--- CRITICAL: Pure random reset
+                )
+                # Repair & Evaluate
+                for ind in populations[i]:
+                    ind = repair_individual(ind, knapsack)
+                    ind.fitness.values = toolbox.evaluate(ind)
+
+            # C. Inject Cluster Bomb
+            # Group 0: Original Noah
+            populations[0][0] = noah
+
+            # Groups 1-7: Mutant Noahs
+            for i in range(1, 8):
+                mutant_noah = creator.Individual(noah)
+                is_different = False
+                while not is_different:
+                    toolbox.mutate(mutant_noah)
+                    if mutant_noah != noah:
+                        is_different = True
+
+                mutant_noah = repair_individual(mutant_noah, knapsack)
+                mutant_noah.fitness.values = toolbox.evaluate(mutant_noah)
+                populations[i][0] = mutant_noah
+
+            # D. Reset Trackers
+            print(f"    STATUS: Cluster Bomb injected. Trackers reset.")
+            for i in range(8):
+                current_new_max = max(ind.fitness.values[0] for ind in populations[i])
+                group_best_fitness[i] = current_new_max
+                group_stagnation_counters[i] = 0
         # ====================================================================
         # STATISTICS & LOGGING
         # ====================================================================
@@ -194,17 +317,85 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
             print(f"{Population_Index_Dict[pop_index]}={best:.0f}  ", end="")
         print()
 
-    # Final Output
+        # Early Break
+        if keyboard.is_pressed("q"):
+            print("Early Stopping")
+            break
+# ====================================================================
+# FINAL SELECTION & OPTIMIZATION
+# ====================================================================
+
+    # 1. Find the Absolute Best Individual across all groups
     best_individual = None
     best_fitness = float('-inf')
+
     for pop in populations:
         for ind in pop:
             if ind.fitness.values[0] > best_fitness:
                 best_fitness = ind.fitness.values[0]
                 best_individual = ind
 
-    print("\nBest individual found:")
-    print("Fitness:", best_fitness)
+    # ============================================
+    # FINAL FORCE FIX (Deterministic 1-Swap)
+    # ============================================
+    # UN-INDENTED: Runs only ONCE at the very end
+    print("\n>>> RUNNING FINAL PRECISION FIX <<<")
+
+    # Work on a copy to be safe, though modifying reference is also fine here
+    best_ind = best_individual
+    current_val = knapsack.getTotalValue(best_ind)
+
+    # CRITICAL FIX: Calculate weight of best_ind, NOT ind
+    current_weight = 0
+    for i, bit in enumerate(best_ind):  # <--- CHANGED FROM ind TO best_ind
+        if bit:
+            w, v = knapsack.items[i]
+            current_weight += w
+
+    # Separate items into IN and OUT lists
+    in_indices = [i for i, bit in enumerate(best_ind) if bit == 1]
+    out_indices = [i for i, bit in enumerate(best_ind) if bit == 0]
+
+    improved = True
+    while improved:
+        improved = False
+        # Iterate through EVERY item currently in the bag
+        for i_in in in_indices:
+            w_out, v_out = knapsack.items[i_in]
+
+            # Check against EVERY item currently out of the bag
+            for i_out in out_indices:
+                w_in, v_in = knapsack.items[i_out]
+
+                # The Trade Logic:
+                # 1. We must gain value
+                # 2. We must fit in the capacity
+                if v_in > v_out:
+                    if current_weight - w_out + w_in <= knapsack.maxCapacity:
+                        print(f"    SWAP FOUND: -Item {i_in} (Val {v_out}) | +Item {i_out} (Val {v_in})")
+                        print(f"    Gain: +{v_in - v_out}")
+
+                        best_ind[i_in] = 0
+                        best_ind[i_out] = 1
+
+                        # Update trackers
+                        current_weight = current_weight - w_out + w_in
+                        current_val = current_val - v_out + v_in
+
+                        # Update lists
+                        in_indices.remove(i_in)
+                        in_indices.append(i_out)
+                        out_indices.remove(i_out)
+                        out_indices.append(i_in)
+
+                        improved = True
+                        break
+            if improved: break
+
+    print(f"Final Optimized Fitness: {current_val}")
+    best_individual = best_ind
+
+                # ... plotting code ...
 
     plt.plot(max_values_history, label="Max fitness")
     plt.plot(avg_values_history, label="Avg fitness")
