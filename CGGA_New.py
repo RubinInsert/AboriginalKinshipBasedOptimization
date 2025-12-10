@@ -82,8 +82,8 @@ Wirlpiri_Wife = {
 Population_Patromiety_Dict = {v: k for k, v in Population_Index_Dict.items()} # Reverse lookup table
 
 
-def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, max_time, max_generations, stagnation_limit,
-              initialization_feasability, random_seed):
+def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, max_time, max_generations, stagnation_limit,
+              initialization_feasability, migration_frequency, migration_size, random_seed):
     ITEMS_LENGTH = len(knapsack)
     POPULATION_SIZE = pop_size
     P_CROSSOVER = crossover_probability
@@ -91,6 +91,8 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
     MAX_GENERATIONS = max_generations
     MAX_TIME_S = max_time
     # Stagnation breaker
+    MIGRATION_FREQ = migration_frequency
+    MIGRATION_SIZE = migration_size
     STAGNATION_LIMIT = stagnation_limit  # If no new record in 20 gens, NUKE.
     # Trackers for EACH of the 8 groups independently
     group_best_fitness = [0] * 8
@@ -158,15 +160,7 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
                 # PARENT SELECTION (Warlpiri Rules)
                 # Father is the individual currently sitting in this slot
                 father = populations[father_idx][i]
-
-                # Identify Mother's Group using Warlpiri Kinship
-                father_code = Population_Index_Dict[father_idx]
-                ideal_wife = Wirlpiri_Wife[father_code]
-                mother_idx = Population_Patromiety_Dict[ideal_wife]
-
-                # Mother is chosen RANDOMLY from the correct Warlpiri group
-                # This ensures genetic mixing while obeying the strict marriage rule
-                mother = random.choice(populations[mother_idx])
+                mother = random.choice(populations[father_idx]) # In a typical Coarse Grained Model, the mother is chosen from the same group as the father
 
                 # REPRODUCTION
                 child = creator.Individual(father)  # Inherit from father initially
@@ -183,10 +177,9 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
                 child = repair_individual(child, knapsack)
                 child.fitness.values = toolbox.evaluate(child)
 
-                # --- C. CHILD PLACEMENT (Warlpiri Rules) ---
-                # Determine which group the child belongs to (Child follows Father's Totem path)
-                child_node = Wirlpiri_Child[father_code]
-                child_dest_idx = Population_Patromiety_Dict[child_node]
+                # --- C. CHILD PLACEMENT ---
+                # In a typical course grained model, individuals are returned to their parent's group (and migration handles exchanges)
+                child_dest_idx = father_idx
 
                 # --- D. CROWDING REPLACEMENT (Restricted Tournament Selection) ---
                 # 1. Define how many candidates to check (Crowding Factor)
@@ -219,6 +212,54 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
                     new_ind = creator.Individual(child)
                     new_ind.fitness.values = child.fitness.values
                     target_pop[closest_incumbent_idx] = new_ind
+        # MIGRATION FOR A STANDARD COARSE GRAINED ALG.
+        if gen % MIGRATION_FREQ == 0 and gen > 0:
+            MIGRATION_CROWDING_WINDOW = 3 # Same as reproduction window
+            migrants_per_group = []
+            for pop in populations:
+                # Find the best individuals in this group
+                # We sort just to find them, but we don't rearrange the actual population list
+                best_in_group = sorted(pop, key=lambda ind: ind.fitness.values[0], reverse=True)[:MIGRATION_SIZE]
+
+                # IMPORTANT: Create deep copies so we don't mess up references
+                clones = [creator.Individual(ind) for ind in best_in_group]
+                # Ensure fitness is copied too
+                for orig, clone in zip(best_in_group, clones):
+                    clone.fitness.values = orig.fitness.values
+
+                migrants_per_group.append(clones)
+
+            # 2. Inject into Neighbors (Ring Topology: 0->1->2...->7->0)
+            for i in range(len(populations)):
+                target_idx = (i + 1) % len(populations)
+                target_pop = populations[target_idx]
+                incoming_migrants = migrants_per_group[i]
+
+                # 3. Crowding Injection (Migrants fight for their spot)
+                for migrant in incoming_migrants:
+
+                    # A. Pick random candidates from target population
+                    candidate_indices = random.sample(range(len(target_pop)), MIGRATION_CROWDING_WINDOW)
+
+                    # B. Find the local most similar to the migrant
+                    closest_incumbent_idx = -1
+                    min_distance = float('inf')
+
+                    for idx in candidate_indices:
+                        dist = get_hamming_distance(migrant, target_pop[idx])
+                        if dist < min_distance:
+                            min_distance = dist
+                            closest_incumbent_idx = idx
+                            # Optimization: Cannot be closer than 0
+                            if dist == 0: break
+
+                    # C. Compete
+                    closest_incumbent = target_pop[closest_incumbent_idx]
+
+                    # Migrant only wins if it is STRICTLY better
+                    # (Prevents replacing a local equal-fitness individual, helping stability)
+                    if migrant.fitness.values[0] > closest_incumbent.fitness.values[0]:
+                        target_pop[closest_incumbent_idx] = migrant
         for i, pop in enumerate(populations):
             current_group_max = max(ind.fitness.values[0] for ind in pop)
 
@@ -238,7 +279,6 @@ def run_WCGGA(knapsack, pop_size, crossover_probability, mutation_probability, m
             # A. Find the global best fitness individual
             best_ind_global = None
             best_fitness_global = -1
-
 
             for pop in populations:
                 for ind in pop:

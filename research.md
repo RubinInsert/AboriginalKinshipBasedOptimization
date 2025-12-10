@@ -30,3 +30,21 @@ The benefit derrived from CGG Algorithms is it's ability for each group to be pr
       - These children are then added to a list of kids that will be added for the next generation in their predefined group (based on Warlpiri system)
   - Once every population has been cycled through, the list of kids designated for each population is sorted by fitness.
   - The lowest **X** children are removed and replaced with the **X** highest fitness individuals from the previous generation (`ELITE_SIZE`)
+
+## WCGGA Algorithm Revised
+## Initialization
+- Same as before, however if an individual is chosen for greedy initialization, each item has a 30% chance of being skipped
+## GA Main loop
+- For every iteration in the GA loop, every individual is looped over once (So every individual acts as the father at least once)
+  - The mother is chosen randomly from their group
+  - Only one individual will be produced.
+    - A clone is created from the father
+    - The clone then has a chance to recieve crossover genes from the mother
+    - Then, bit-flip mutation is applied to the clone
+    - For placing the clone into the next generation, a process called CROWDING is used
+      - Crowding is a process of inserting the new individual in the slot of an old individual who most resembles the traits of the new individual
+        - This is determined by the hamming distance between a random selection of 3 individuals in the sub-population
+          - Crowding is a means to preserve diversity and develop certain "niches" amongst sub-groups, despite them not being the highest fitness
+  - After the population has been completely cycled through, the algorithm checks if any progress has been made
+    - If no progress has been made in any of the sub-populations for **X** generations, then a nuke is dropped (essentially reintroducing diversity into all the populations)
+- Everything else remains the same
