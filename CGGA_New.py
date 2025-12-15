@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 from knapsack import Knapsack
 import numpy as np
 from kinship_structure_navigation import Warlpiri_Subsection
-from GA_helpers import init_hybrid_population, repair_individual, get_hamming_distance
+from GA_helpers import init_hybrid_population, repair_individual, get_hamming_distance, calculate_population_diversity
 import time
 import keyboard
 Population_Index_Dict = {
@@ -129,12 +129,13 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
     toolbox.register("evaluate", evaluate)
     toolbox.register("mate", tools.cxTwoPoint)
     toolbox.register("mutate", tools.mutFlipBit, indpb=P_MUTATION)
-
+    hof = tools.HallOfFame(maxsize=10)
     # Evaluate initial population
     for pop in populations:
         for individual in pop:
             individual.fitness.values = toolbox.evaluate(individual)
-
+    all_inds_init = [ind for pop in populations for ind in pop]
+    hof.update(all_inds_init)
     # Statistics Tracking
     max_values_history = []
     avg_values_history = []
@@ -143,7 +144,8 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
     # BEGIN EVOLUTIONARY LOOP (DETERMINISTIC CROWDING)
     # ====================================================================
     print("Starting Deterministic Crowding Evolution...")
-
+    diversity_history = []  # <--- NEW TRACKER
+    group_diversity_history = []  # <--- OPTIONAL: Track diversity PER GROUP
     for gen in range(MAX_GENERATIONS):
         elapsed_time = time.time() - start_time
         if elapsed_time > MAX_TIME_S:
@@ -270,6 +272,10 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
             else:
                 group_stagnation_counters[i] += 1  # Increment
 
+        all_inds = [ind for pop in populations for ind in pop]
+        # Update the Hall of Fame with the current generation
+        hof.update(all_inds)
+
         # Check for Convergence / Stagnation
         least_stagnant_count = min(group_stagnation_counters)
 
@@ -277,14 +283,9 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
             print(f"\n NUKE RELEASED \n")
 
             # A. Find the global best fitness individual
-            best_ind_global = None
+            best_ind_global = hof[0]
             best_fitness_global = -1
 
-            for pop in populations:
-                for ind in pop:
-                    if ind.fitness.values[0] > best_fitness_global:
-                        best_fitness_global = ind.fitness.values[0]
-                        best_ind_global = ind
 
             # Create a deep copy of best individual
             best_ind = creator.Individual(best_ind_global)
@@ -337,7 +338,17 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
             best = max(ind.fitness.values[0] for ind in pop)
             print(f"{Population_Index_Dict[pop_index]}={best:.0f}  ", end="")
         print()
+        # 1. Global Diversity (Whole Population)
+        # Flatten the subpopulations into one list for calculation
+        all_inds = [ind for pop in populations for ind in pop]
+        global_div = calculate_population_diversity(all_inds)
+        diversity_history.append(global_div)
 
+        # 2. (Optional) Group Specific Diversity - To prove "Different Camps"
+        # Only calculate this every 10 gens to save time
+        if gen % 10 == 0:
+            current_group_divs = [calculate_population_diversity(pop) for pop in populations]
+            group_diversity_history.append(current_group_divs)
         # Early Break - For testing
         if keyboard.is_pressed("q"):
             print("Early Stopping")
@@ -346,26 +357,12 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
 # FINAL SELECTION & OPTIMIZATION
 # ====================================================================
 
-    # 1. Find the Absolute Best Individual across all groups
-    best_individual = None
-    best_fitness = float('-inf')
-
-    for pop in populations:
-        for ind in pop:
-            if ind.fitness.values[0] > best_fitness:
-                best_fitness = ind.fitness.values[0]
-                best_individual = ind
-
-
-    plt.plot(max_values_history, label="Max fitness")
-    plt.plot(avg_values_history, label="Avg fitness")
-    plt.legend()
-    plt.show()
-
     return {
-        "best_individual": best_individual,
+        "best_individual": hof[0],
         "max_values": max_values_history,
-        "avg_values": avg_values_history
+        "avg_values": avg_values_history,
+        "diversity_history": diversity_history,
+        "group_diversity_history": group_diversity_history
     }
 
 # Fitness Function applied on all sets

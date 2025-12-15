@@ -293,3 +293,28 @@ def repair_individual(ind, knapsack):
         i += WINDOW_SIZE
 
     return ind
+
+
+import numpy as np
+
+
+def calculate_population_diversity(population):
+    """
+    Calculates diversity efficiently using column-wise variance.
+    Returns a float: 0.0 (Identical clones) to 0.25 (Maximum chaos).
+    """
+    if not population: return 0.0
+
+    # Convert list of individuals to boolean numpy array for speed
+    # (Assuming individuals are lists of 0s and 1s)
+    pop_matrix = np.array([ind for ind in population], dtype=np.uint8)
+
+    # Calculate the fraction of 1s for each item (column)
+    p = np.mean(pop_matrix, axis=0)
+
+    # Variance for binary data = p * (1 - p)
+    # Sum of variance across all items gives total population diversity
+    diversity_score = np.sum(p * (1 - p))
+
+    # Normalize by number of items so it's comparable across different problem sizes
+    return diversity_score / pop_matrix.shape[1]
