@@ -93,7 +93,7 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
     # Stagnation breaker
     MIGRATION_FREQ = migration_frequency
     MIGRATION_SIZE = migration_size
-    STAGNATION_LIMIT = stagnation_limit  # If no new record in 20 gens, NUKE.
+    DIVERSITY_STAGNATION_THRESHOLD = 0.025  # If no new record in 20 gens, NUKE.
     # Trackers for EACH of the 8 groups independently
     group_best_fitness = [0] * 8
     group_stagnation_counters = [0] * 8
@@ -276,54 +276,34 @@ def run_CGGA(knapsack, pop_size, crossover_probability, mutation_probability, ma
         # Update the Hall of Fame with the current generation
         hof.update(all_inds)
 
-        # Check for Convergence / Stagnation
-        least_stagnant_count = min(group_stagnation_counters)
+        if len(diversity_history) > 0:
+            if diversity_history[-1] < DIVERSITY_STAGNATION_THRESHOLD:
 
-        if least_stagnant_count >= STAGNATION_LIMIT:
-            print(f"\n NUKE RELEASED \n")
+                print(f"\n NUKE RELEASED \n")
 
-            # A. Find the global best fitness individual
-            best_ind_global = hof[0]
-            best_fitness_global = -1
+                # A. Find the global best fitness individual
+                best_ind_global = hof[0]
+                best_fitness_global = -1
 
+                # Create a deep copy of best individual
+                best_ind = creator.Individual(best_ind_global)
+                best_ind.fitness.values = best_ind_global.fitness.values
 
-            # Create a deep copy of best individual
-            best_ind = creator.Individual(best_ind_global)
-            best_ind.fitness.values = best_ind_global.fitness.values
+                # B. Nuke Everything (PURE RANDOM RESET)
+                for i in range(len(populations)):
+                    populations[i] = init_hybrid_population(
+                        toolbox,
+                        BASE_POP_SIZE,
+                        knapsack,
+                        feasible_ratio=0.0  # <--- CRITICAL: Pure random reset
+                    )
+                    # Repair & Evaluate
+                    for ind in populations[i]:
+                        ind = repair_individual(ind, knapsack)
+                        ind.fitness.values = toolbox.evaluate(ind)
 
-            # B. Nuke Everything (PURE RANDOM RESET)
-            for i in range(len(populations)):
-                populations[i] = init_hybrid_population(
-                    toolbox,
-                    BASE_POP_SIZE,
-                    knapsack,
-                    feasible_ratio=0.0  # <--- CRITICAL: Pure random reset
-                )
-                # Repair & Evaluate
-                for ind in populations[i]:
-                    ind = repair_individual(ind, knapsack)
-                    ind.fitness.values = toolbox.evaluate(ind)
-
-            # place
-            populations[0][0] = best_ind
-
-            # Groups 1-7: Mutant Noahs
-            for i in range(1, 8):
-                mutant_best_ind = creator.Individual(best_ind)
-                is_different = False
-                while not is_different:
-                    toolbox.mutate(mutant_best_ind)
-                    if mutant_best_ind != best_ind:
-                        is_different = True
-
-                mutant_best_ind = repair_individual(mutant_best_ind, knapsack)
-                mutant_best_ind.fitness.values = toolbox.evaluate(mutant_best_ind)
-                populations[i][0] = mutant_best_ind
-
-            for i in range(8): # Reset Stagnation detection vars
-                current_new_max = max(ind.fitness.values[0] for ind in populations[i])
-                group_best_fitness[i] = current_new_max
-                group_stagnation_counters[i] = 0
+                # place
+                populations[0][0] = best_ind
 
         # Calculate stats based on the updated population
         all_inds = [ind for pop in populations for ind in pop]
